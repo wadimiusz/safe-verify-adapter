@@ -160,7 +160,7 @@ class Verificator:
                     cwd=self.safe_verify_dir,
                     capture_output=True,
                     text=True,
-                    timeout=5,
+                    timeout=600,
                     shell=True,
                 )
 
