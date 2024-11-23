@@ -1,6 +1,4 @@
 import os.path
-import secrets
-import shlex
 import shutil
 import subprocess
 import traceback
@@ -18,32 +16,51 @@ class ProofRequest(BaseModel):
 class ProofResponse(BaseModel):
     success: bool
     message: str
-    stdout: str = None
-    stderr: str = None
+    stdout: str | None = None
+    stderr: str | None = None
 
 
-class VerificationApp:
+class Verificator:
     def __init__(self):
-        self.working_dir = f"/tmp/{secrets.token_hex()}"
+        self.working_dir = os.path.abspath(os.environ["WORKING_DIR"])
+        os.makedirs(self.working_dir, exist_ok=True)
         logger.info(f"The working dir will be {self.working_dir}")
+        self.safe_verify_dir = os.path.join(self.working_dir, "SafeVerify")
+        if not os.path.exists(self.safe_verify_dir):
+            result = subprocess.run(
+                ["git", "clone", "https://github.com/GasStationManager/SafeVerify.git"],
+                cwd=self.working_dir,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to clone the SafeVerify git repo. Exit code: {result.returncode}. "
+                    f"Stdout:\n{result.stdout}\n\n"
+                    f"Stderr:\n{result.stderr}\n\n"
+                )
+        logger.info("Updating lake dependencies.")
         result = subprocess.run(
-            ["git", "clone", "https://github.com/GasStationManager/SafeVerify.git"],
-            cwd=self.working_dir,
+            ["lake", "update"],
+            cwd=self.safe_verify_dir,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=1200,
         )
+        logger.info("Lake dependencies updated.")
+
         if result.returncode != 0:
             raise RuntimeError(
-                f"Failed to clone the SafeVerify git repo. Exit code: {result.returncode}. "
-                f"Stdout:\n{result.stdout}\n\n"
-                f"Stderr:\n{result.stderr}\n\n"
+                f"Failed to update lake dependencies.\n"
+                f"Stdout:\n{result.stdout}\n\n\n"
+                f"Stderr:\n{result.stderr}\n\n\n"
             )
 
-        self.safe_verify_dir = os.path.join(self.working_dir, "SafeVerify")
         assert os.path.isdir(self.safe_verify_dir)
         self.app = FastAPI()
         self.app.add_event_handler("shutdown", self.shutdown)
+        self.setup_routes()
 
     def shutdown(self):
         shutil.rmtree(self.working_dir)
@@ -55,11 +72,12 @@ class VerificationApp:
             f.write(content)
 
         result = subprocess.run(
-            ["lake", "env", "run", "-o", shlex.quote(output_path), input_path],
+            f"lean -o {output_path} {input_path}",
             cwd=self.safe_verify_dir,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=1,
+            shell=True,
         )
 
         return result.returncode, result.stdout, result.stderr
@@ -70,8 +88,8 @@ class VerificationApp:
             theorem = request.theorem
             proof = request.proof
 
-            theorem_uncompiled_path = os.path.join(self.working_dir, "Theorem.lean")
-            theorem_compiled_path = os.path.join(self.working_dir, "Theorem.olean")
+            theorem_uncompiled_path = os.path.join(self.safe_verify_dir, "Theorem.lean")
+            theorem_compiled_path = os.path.join(self.safe_verify_dir, "Theorem.olean")
 
             try:
                 exit_code, stdout, stderr = self.compile(
@@ -92,13 +110,13 @@ class VerificationApp:
             if exit_code != 0:
                 return ProofResponse(
                     success=False,
-                    messages="Failed to compile the theorem file.",
+                    message="Failed to compile the theorem file.",
                     stdout=stdout,
                     stderr=stderr,
                 )
 
-            proof_uncompiled_path = os.path.join(self.working_dir, "Proof.lean")
-            proof_compiled_path = os.path.join(self.working_dir, "Proof.olean")
+            proof_uncompiled_path = os.path.join(self.safe_verify_dir, "Proof.lean")
+            proof_compiled_path = os.path.join(self.safe_verify_dir, "Proof.olean")
 
             try:
                 exit_code, stdout, stderr = self.compile(
@@ -126,19 +144,12 @@ class VerificationApp:
 
             try:
                 result = subprocess.run(
-                    [
-                        "lean",
-                        "env",
-                        "lean",
-                        "--run",
-                        "Main.lean",
-                        theorem_compiled_path,
-                        proof_compiled_path,
-                    ],
+                    f"lake env lean --run Main.lean {theorem_compiled_path} {proof_compiled_path}",
                     cwd=self.safe_verify_dir,
                     capture_output=True,
                     text=True,
-                    timeout=60,
+                    timeout=5,
+                    shell=True,
                 )
 
                 if result.returncode == 0:
@@ -170,3 +181,7 @@ class VerificationApp:
                 )
             except Exception:
                 raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+
+verificator = Verificator()
+app = verificator.app
