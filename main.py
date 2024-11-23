@@ -20,42 +20,54 @@ class ProofResponse(BaseModel):
     stderr: str | None = None
 
 
+def run_command(args: list[str], timeout: float | int, working_dir: str):
+    result = subprocess.run(
+        args, text=True, cwd=working_dir, capture_output=True, timeout=timeout
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Command {args} failed.\n"
+            f"Stdout:\n{result.stdout}\n\n\n"
+            f"Stderr:\n{result.stderr}\n\n\n"
+        )
+
+
 class Verificator:
+
     def __init__(self):
         self.working_dir = os.path.abspath(os.environ["WORKING_DIR"])
         os.makedirs(self.working_dir, exist_ok=True)
         logger.info(f"The working dir will be {self.working_dir}")
         self.safe_verify_dir = os.path.join(self.working_dir, "SafeVerify")
         if not os.path.exists(self.safe_verify_dir):
-            result = subprocess.run(
+            run_command(
                 ["git", "clone", "https://github.com/GasStationManager/SafeVerify.git"],
-                cwd=self.working_dir,
-                capture_output=True,
-                text=True,
+                working_dir=self.working_dir,
                 timeout=60,
             )
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"Failed to clone the SafeVerify git repo. Exit code: {result.returncode}. "
-                    f"Stdout:\n{result.stdout}\n\n"
-                    f"Stderr:\n{result.stderr}\n\n"
-                )
-        logger.info("Updating lake dependencies.")
-        result = subprocess.run(
+
+        with open(os.path.join(self.safe_verify_dir, "lean-toolchain")) as f:
+            toolchain = f.read().strip()
+
+        logger.info("Installing toolchain.")
+        run_command(
+            ["elan", "toolchain", "install", toolchain],
+            timeout=600,
+            working_dir=self.safe_verify_dir,
+        )
+
+        logger.info("Toolchain installed. Setting as default.")
+        run_command(
+            ["elan", "default", toolchain], timeout=10, working_dir=self.safe_verify_dir
+        )
+
+        logger.info("Default toolchain set. Updating lake dependencies.")
+        run_command(
             ["lake", "update"],
-            cwd=self.safe_verify_dir,
-            capture_output=True,
-            text=True,
+            working_dir=self.safe_verify_dir,
             timeout=1200,
         )
         logger.info("Lake dependencies updated.")
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Failed to update lake dependencies.\n"
-                f"Stdout:\n{result.stdout}\n\n\n"
-                f"Stderr:\n{result.stderr}\n\n\n"
-            )
 
         assert os.path.isdir(self.safe_verify_dir)
         self.app = FastAPI()
