@@ -92,6 +92,7 @@ class Verificator:
                     timeout=1200,
                     working_dir=self.safe_verify_dir,
                 )
+                logger.info("Successfully updated. Back to sleep...")
 
             time.sleep(6 * 60 * 60)
 
