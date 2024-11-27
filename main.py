@@ -1,6 +1,8 @@
 import os.path
 import shutil
 import subprocess
+import threading
+import time
 import traceback
 
 from fastapi import FastAPI, HTTPException
@@ -35,6 +37,7 @@ def run_command(args: list[str], timeout: float | int, working_dir: str):
 class Verificator:
 
     def __init__(self):
+        self.update_lock = threading.Lock()
         self.working_dir = os.path.abspath(os.environ["WORKING_DIR"])
         os.makedirs(self.working_dir, exist_ok=True)
         logger.info(f"The working dir will be {self.working_dir}")
@@ -70,9 +73,23 @@ class Verificator:
         logger.info("Lake dependencies updated.")
 
         assert os.path.isdir(self.safe_verify_dir)
+        self.update_repo_thread = threading.Thread(
+            target=self.update_repo_thread_function
+        )
+        self.update_repo_thread.start()
         self.app = FastAPI()
         self.app.add_event_handler("shutdown", self.shutdown)
         self.setup_routes()
+
+    def update_repo_thread_function(self):
+        while True:
+            with self.update_lock:
+                run_command(
+                    args=["git", "pull"], working_dir=self.safe_verify_dir, timeout=120
+                )
+                run_command(args=["lake", "update"], timeout=1200)
+
+            time.sleep(6 * 60 * 60)
 
     def shutdown(self):
         shutil.rmtree(self.working_dir)
@@ -88,7 +105,7 @@ class Verificator:
             cwd=self.safe_verify_dir,
             capture_output=True,
             text=True,
-            timeout=1,
+            timeout=600,
             shell=True,
         )
 
@@ -97,102 +114,107 @@ class Verificator:
     def setup_routes(self):
         @self.app.post("/verify-proof", response_model=ProofResponse)
         def verify_proof(request: ProofRequest):
-            theorem = request.theorem
-            proof = request.proof
+            with self.update_lock:
+                theorem = request.theorem
+                proof = request.proof
 
-            theorem_uncompiled_path = os.path.join(self.safe_verify_dir, "Theorem.lean")
-            theorem_compiled_path = os.path.join(self.safe_verify_dir, "Theorem.olean")
-
-            try:
-                exit_code, stdout, stderr = self.compile(
-                    input_path=theorem_uncompiled_path,
-                    output_path=theorem_compiled_path,
-                    content=theorem,
+                theorem_uncompiled_path = os.path.join(
+                    self.safe_verify_dir, "Theorem.lean"
                 )
-            except Exception:
-                return ProofResponse(
-                    success=False,
-                    message="Trying to compile the theorem file yielded an exception.",
-                    stdout=None,
-                    stderr=traceback.format_exc(),
+                theorem_compiled_path = os.path.join(
+                    self.safe_verify_dir, "Theorem.olean"
                 )
 
-            os.remove(theorem_uncompiled_path)
-
-            if exit_code != 0:
-                return ProofResponse(
-                    success=False,
-                    message="Failed to compile the theorem file.",
-                    stdout=stdout,
-                    stderr=stderr,
-                )
-
-            proof_uncompiled_path = os.path.join(self.safe_verify_dir, "Proof.lean")
-            proof_compiled_path = os.path.join(self.safe_verify_dir, "Proof.olean")
-
-            try:
-                exit_code, stdout, stderr = self.compile(
-                    input_path=proof_uncompiled_path,
-                    output_path=proof_compiled_path,
-                    content=proof,
-                )
-            except Exception:
-                return ProofResponse(
-                    success=False,
-                    message="Trying to compile the proof file yielded an exception.",
-                    stdout=None,
-                    stderr=traceback.format_exc(),
-                )
-
-            os.remove(proof_uncompiled_path)
-
-            if exit_code != 0:
-                return ProofResponse(
-                    success=False,
-                    messages="Failed to compile the proof file.",
-                    stdout=stdout,
-                    stderr=stderr,
-                )
-
-            try:
-                result = subprocess.run(
-                    f"lake env lean --run Main.lean {theorem_compiled_path} {proof_compiled_path}",
-                    cwd=self.safe_verify_dir,
-                    capture_output=True,
-                    text=True,
-                    timeout=600,
-                    shell=True,
-                )
-
-                if result.returncode == 0:
-
-                    logger.info(
-                        f"======================\nTheorem: \n{theorem}\n\nProof:\n{proof}\n\n"
-                        f"Result: accepted.\n"
+                try:
+                    exit_code, stdout, stderr = self.compile(
+                        input_path=theorem_uncompiled_path,
+                        output_path=theorem_compiled_path,
+                        content=theorem,
                     )
-                    return ProofResponse(
-                        success=True,
-                        message="Proof is valid.",
-                        stdout=result.stdout,
-                        stderr=result.stderr,
-                    )
-                else:
-                    logger.info(
-                        f"======================\nTheorem: \n{theorem}\n\nProof:\n{proof}\n\n"
-                        f"Result: declined.\n"
-                    )
+                except Exception:
                     return ProofResponse(
                         success=False,
-                        message="Proof is invalid.",
-                        output=result.stdout,
-                        stderr=result.stderr,
+                        message="Trying to compile the theorem file yielded an exception.",
+                        stdout=None,
+                        stderr=traceback.format_exc(),
                     )
-            except subprocess.TimeoutExpired:
-                raise HTTPException(
-                    status_code=504, detail="Proof verification timed out."
-                )
-            except Exception:
-                raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+                os.remove(theorem_uncompiled_path)
+
+                if exit_code != 0:
+                    return ProofResponse(
+                        success=False,
+                        message="Failed to compile the theorem file.",
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
+
+                proof_uncompiled_path = os.path.join(self.safe_verify_dir, "Proof.lean")
+                proof_compiled_path = os.path.join(self.safe_verify_dir, "Proof.olean")
+
+                try:
+                    exit_code, stdout, stderr = self.compile(
+                        input_path=proof_uncompiled_path,
+                        output_path=proof_compiled_path,
+                        content=proof,
+                    )
+                except Exception:
+                    return ProofResponse(
+                        success=False,
+                        message="Trying to compile the proof file yielded an exception.",
+                        stdout=None,
+                        stderr=traceback.format_exc(),
+                    )
+
+                os.remove(proof_uncompiled_path)
+
+                if exit_code != 0:
+                    return ProofResponse(
+                        success=False,
+                        messages="Failed to compile the proof file.",
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
+
+                try:
+                    result = subprocess.run(
+                        f"lake env lean --run Main.lean {theorem_compiled_path} {proof_compiled_path}",
+                        cwd=self.safe_verify_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=600,
+                        shell=True,
+                    )
+
+                    if result.returncode == 0:
+
+                        logger.info(
+                            f"======================\nTheorem: \n{theorem}\n\nProof:\n{proof}\n\n"
+                            f"Result: accepted.\n"
+                        )
+                        return ProofResponse(
+                            success=True,
+                            message="Proof is valid.",
+                            stdout=result.stdout,
+                            stderr=result.stderr,
+                        )
+                    else:
+                        logger.info(
+                            f"======================\nTheorem: \n{theorem}\n\nProof:\n{proof}\n\n"
+                            f"Result: declined.\n"
+                        )
+                        return ProofResponse(
+                            success=False,
+                            message="Proof is invalid.",
+                            output=result.stdout,
+                            stderr=result.stderr,
+                        )
+                except subprocess.TimeoutExpired:
+                    raise HTTPException(
+                        status_code=504, detail="Proof verification timed out."
+                    )
+                except Exception:
+                    raise HTTPException(status_code=500, detail=traceback.format_exc())
 
 
 verificator = Verificator()
