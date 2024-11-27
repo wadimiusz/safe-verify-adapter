@@ -87,7 +87,11 @@ class Verificator:
                 run_command(
                     args=["git", "pull"], working_dir=self.safe_verify_dir, timeout=120
                 )
-                run_command(args=["lake", "update"], timeout=1200)
+                run_command(
+                    args=["lake", "update"],
+                    timeout=1200,
+                    working_dir=self.safe_verify_dir,
+                )
 
             time.sleep(6 * 60 * 60)
 
