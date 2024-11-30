@@ -22,6 +22,17 @@ class ProofResponse(BaseModel):
     stderr: str | None = None
 
 
+class SyntaxCheckRequest(BaseModel):
+    file_content: str
+
+
+class SyntaxCheckResponse(BaseModel):
+    success: bool
+    message: str
+    stdout: str | None = None
+    stderr: str | None = None
+
+
 def run_command(args: list[str], timeout: float | int, working_dir: str):
     result = subprocess.run(
         args, text=True, cwd=working_dir, capture_output=True, timeout=timeout
@@ -94,7 +105,7 @@ class Verificator:
                 )
                 logger.info("Successfully updated. Back to sleep...")
 
-            time.sleep(6 * 60 * 60)
+            time.sleep(60 * 60)
 
     def shutdown(self):
         shutil.rmtree(self.working_dir)
@@ -117,6 +128,54 @@ class Verificator:
         return result.returncode, result.stdout, result.stderr
 
     def setup_routes(self):
+        @self.app.post("/check-syntax", response_model=SyntaxCheckResponse)
+        def check_syntax(request: SyntaxCheckRequest):
+            with self.update_lock:
+                file_content = request.file_content
+
+                file_uncompiled_path = os.path.join(self.safe_verify_dir, "File.lean")
+                file_compiled_path = os.path.join(self.safe_verify_dir, "File.olean")
+
+                try:
+                    exit_code, stdout, stderr = self.compile(
+                        input_path=file_uncompiled_path,
+                        output_path=file_compiled_path,
+                        content=file_content,
+                    )
+                except Exception:
+                    try:
+                        os.remove(file_uncompiled_path)
+                        os.remove(file_compiled_path)
+                    except FileNotFoundError:
+                        pass
+
+                    return SyntaxCheckResponse(
+                        success=False,
+                        message="Running the syntax check resulted in an exception.",
+                        stdout=None,
+                        stderr=traceback.format_exc(),
+                    )
+
+                try:
+                    os.remove(file_uncompiled_path)
+                    os.remove(file_uncompiled_path)
+                except FileNotFoundError:
+                    pass
+
+                if exit_code == 0:
+                    success = True
+                    message = "Syntax check passed."
+                else:
+                    success = False
+                    message = f"Syntax check failed (exit code {exit_code} received)."
+
+                return SyntaxCheckResponse(
+                    success=success,
+                    message=message,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
         @self.app.post("/verify-proof", response_model=ProofResponse)
         def verify_proof(request: ProofRequest):
             with self.update_lock:
