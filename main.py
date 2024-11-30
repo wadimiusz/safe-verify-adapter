@@ -23,7 +23,7 @@ class ProofResponse(BaseModel):
 
 
 class SyntaxCheckRequest(BaseModel):
-    file_content: str
+    code: str
 
 
 class SyntaxCheckResponse(BaseModel):
@@ -131,7 +131,7 @@ class Verificator:
         @self.app.post("/check-syntax", response_model=SyntaxCheckResponse)
         def check_syntax(request: SyntaxCheckRequest):
             with self.update_lock:
-                file_content = request.file_content
+                code = request.code
 
                 file_uncompiled_path = os.path.join(self.safe_verify_dir, "File.lean")
                 file_compiled_path = os.path.join(self.safe_verify_dir, "File.olean")
@@ -140,7 +140,7 @@ class Verificator:
                     exit_code, stdout, stderr = self.compile(
                         input_path=file_uncompiled_path,
                         output_path=file_compiled_path,
-                        content=file_content,
+                        content=code,
                     )
                 except Exception:
                     try:
@@ -150,7 +150,7 @@ class Verificator:
                         pass
                     logger.info(
                         f"======================\nChecking syntax for the file:\n"
-                        f"{file_content}\n"
+                        f"{code}\n"
                         f"Result: declined."
                     )
                     return SyntaxCheckResponse(
@@ -169,7 +169,7 @@ class Verificator:
                 if exit_code == 0:
                     logger.info(
                         f"======================\nChecking syntax for the file:\n"
-                        f"{file_content}\n"
+                        f"{code}\n"
                         f"Result: accepted."
                     )
                     success = True
@@ -177,7 +177,7 @@ class Verificator:
                 else:
                     logger.info(
                         f"======================\nChecking syntax for the file:\n"
-                        f"{file_content}\n"
+                        f"{code}\n"
                         f"Result: declined."
                     )
                     success = False
