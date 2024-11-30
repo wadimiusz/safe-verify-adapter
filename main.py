@@ -148,7 +148,11 @@ class Verificator:
                         os.remove(file_compiled_path)
                     except FileNotFoundError:
                         pass
-
+                    logger.info(
+                        f"======================\nChecking syntax for the file:\n"
+                        f"{file_content}\n"
+                        f"Result: declined."
+                    )
                     return SyntaxCheckResponse(
                         success=False,
                         message="Running the syntax check resulted in an exception.",
@@ -163,9 +167,19 @@ class Verificator:
                     pass
 
                 if exit_code == 0:
+                    logger.info(
+                        f"======================\nChecking syntax for the file:\n"
+                        f"{file_content}\n"
+                        f"Result: accepted."
+                    )
                     success = True
                     message = "Syntax check passed."
                 else:
+                    logger.info(
+                        f"======================\nChecking syntax for the file:\n"
+                        f"{file_content}\n"
+                        f"Result: declined."
+                    )
                     success = False
                     message = f"Syntax check failed (exit code {exit_code} received)."
 
