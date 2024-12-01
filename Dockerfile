@@ -24,4 +24,4 @@ WORKDIR /app
 COPY main.py .
 
 # Command to run the API
-CMD gunicorn -k --bind 0.0.0.0:8081 --access-logfile '-' --error-logfile '-' --log-level 'info' main:app
+CMD uvicorn --host 0.0.0.0 --port 8081 --log-level info main:app
