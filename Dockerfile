@@ -24,4 +24,4 @@ WORKDIR /app
 COPY main.py .
 
 # Command to run the API
-CMD uvicorn --host 0.0.0.0 --port 8081 --log-level info main:app
+CMD uvicorn --host 0.0.0.0 --port 8080 --log-level info main:app
