@@ -2,4 +2,4 @@ fastapi
 uvicorn
 pydantic
 loguru
-gunicorn
+uvicorn
