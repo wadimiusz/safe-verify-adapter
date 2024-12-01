@@ -141,6 +141,7 @@ class Verificator:
     def setup_routes(self):
         @self.app.post("/check-syntax", response_model=SyntaxCheckResponse)
         def check_syntax(request: SyntaxCheckRequest):
+            logger.debug(f"Request: {request}")
             with self.update_lock:
                 code = request.code
 
@@ -154,6 +155,7 @@ class Verificator:
                         content=code,
                     )
                 except Exception:
+                    logger.error(traceback.format_exc())
                     try:
                         os.remove(file_uncompiled_path)
                         os.remove(file_compiled_path)
