@@ -112,7 +112,7 @@ class Verificator:
                     working_dir=self.safe_verify_dir,
                 )
                 logger.info(
-                    f"Successfully updated. This took {format_duration(time.time() - start)}."
+                    f"Successfully updated. This took {format_duration(time.time() - start)}. "
                     f"Back to sleep..."
                 )
 
