@@ -10,6 +10,13 @@ from loguru import logger
 from pydantic import BaseModel
 
 
+def format_duration(duration_in_seconds):
+    hours = int(duration_in_seconds // 3600)
+    minutes = int((duration_in_seconds % 3600) // 60)
+    seconds = duration_in_seconds % 60
+    return f"{hours}:{minutes:02d}:{seconds:05.2f}"
+
+
 class ProofRequest(BaseModel):
     theorem: str
     proof: str
@@ -95,6 +102,7 @@ class Verificator:
     def update_repo_thread_function(self):
         while True:
             with self.update_lock:
+                start = time.time()
                 run_command(
                     args=["git", "pull"], working_dir=self.safe_verify_dir, timeout=120
                 )
@@ -103,7 +111,10 @@ class Verificator:
                     timeout=1200,
                     working_dir=self.safe_verify_dir,
                 )
-                logger.info("Successfully updated. Back to sleep...")
+                logger.info(
+                    f"Successfully updated. This took {format_duration(time.time() - start)}."
+                    f"Back to sleep..."
+                )
 
             time.sleep(60 * 60)
 
