@@ -5,6 +5,7 @@ import threading
 import time
 import traceback
 
+import requests
 from fastapi import FastAPI, HTTPException
 from loguru import logger
 from pydantic import BaseModel
@@ -98,6 +99,27 @@ class Verificator:
         self.app = FastAPI()
         self.app.add_event_handler("shutdown", self.shutdown)
         self.setup_routes()
+        self.close_bounty_url = "http://theorem-marketplace:5000/api/close_bounty"
+
+    def close_bounty(self, theorem: str, proof: str):
+        try:
+            response = requests.post(
+                self.close_bounty_url,
+                json={"theorem": theorem, "proof": proof},
+                timeout=20,
+            )
+        except Exception:
+            logger.warning(
+                f"Failed to close bounty for the following theorem: \n{theorem}\n\n"
+                f"The provided proof was:\n{proof}\n\nTraceback:\n:{traceback.format_exc()}"
+            )
+            return
+
+        if response.status_code != 200:
+            logger.warning(
+                f"Failed to close bounty (status code {response.status_code}, text {response.text}).\n"
+                f"Theorem:\n{theorem}\n\nProof:\n{proof}"
+            )
 
     def update_repo_thread_function(self):
         while True:
@@ -278,7 +300,7 @@ class Verificator:
                     )
 
                     if result.returncode == 0:
-
+                        self.close_bounty(theorem, proof)
                         logger.info(
                             f"======================\nTheorem: \n{theorem}\n\nProof:\n{proof}\n\n"
                             f"Result: accepted.\n"
