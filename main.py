@@ -150,7 +150,7 @@ class Verificator:
             f.write(content)
 
         result = subprocess.run(
-            f"lean -o {output_path} {input_path}",
+            f"lake env lean -o {output_path} {input_path}",
             cwd=self.safe_verify_dir,
             capture_output=True,
             text=True,
@@ -159,6 +159,23 @@ class Verificator:
         )
 
         return result.returncode, result.stdout, result.stderr
+
+    def add_imports_to_main(
+        self, input_path: str, output_path: str, imports: list[str]
+    ):
+        with open(input_path) as f:
+            content = f.read()
+
+        lines = set(content.split("\n"))
+        imports_except_already_used = [
+            name for name in imports if f"import {name}" not in lines
+        ]
+
+        with open(output_path, "w") as f:
+            for name in imports_except_already_used:
+                f.write(f"import {name}\n")
+
+            f.write(content)
 
     def setup_routes(self):
         @self.app.post("/check-syntax", response_model=SyntaxCheckResponse)
@@ -290,8 +307,19 @@ class Verificator:
                     )
 
                 try:
+                    self.add_imports_to_main(
+                        input_path=os.path.join(self.safe_verify_dir, "Main.lean"),
+                        output_path=os.path.join(
+                            self.safe_verify_dir, "Main_with_imports.lean"
+                        ),
+                        imports=["Mathlib"],
+                    )
+                except Exception:
+                    raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+                try:
                     result = subprocess.run(
-                        f"lake env lean --run Main.lean {theorem_compiled_path} {proof_compiled_path}",
+                        f"lake env lean --run Main_with_imports.lean {theorem_compiled_path} {proof_compiled_path}",
                         cwd=self.safe_verify_dir,
                         capture_output=True,
                         text=True,
