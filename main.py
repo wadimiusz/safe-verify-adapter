@@ -214,7 +214,7 @@ class Verificator:
 
                 try:
                     os.remove(file_uncompiled_path)
-                    os.remove(file_uncompiled_path)
+                    os.remove(file_compiled_path)
                 except FileNotFoundError:
                     pass
 
