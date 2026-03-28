@@ -72,11 +72,14 @@ class Verificator:
             toolchain = f.read().strip()
 
         logger.info("Installing toolchain.")
-        run_command(
+        result = subprocess.run(
             ["elan", "toolchain", "install", toolchain],
-            timeout=600,
-            working_dir=self.safe_verify_dir,
+            text=True, cwd=self.safe_verify_dir, capture_output=True, timeout=600,
         )
+        if result.returncode != 0 and "already installed" not in result.stderr:
+            raise RuntimeError(
+                f"Failed to install toolchain.\nStdout:\n{result.stdout}\nStderr:\n{result.stderr}"
+            )
 
         logger.info("Toolchain installed. Setting as default.")
         run_command(
