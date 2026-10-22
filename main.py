@@ -311,7 +311,7 @@ class Verificator:
                 if exit_code != 0:
                     return ProofResponse(
                         success=False,
-                        messages="Failed to compile the proof file.",
+                        message="Failed to compile the proof file.",
                         stdout=stdout,
                         stderr=stderr,
                     )
@@ -357,7 +357,7 @@ class Verificator:
                         return ProofResponse(
                             success=False,
                             message="Proof is invalid.",
-                            output=result.stdout,
+                            stdout=result.stdout,
                             stderr=result.stderr,
                         )
                 except subprocess.TimeoutExpired:
