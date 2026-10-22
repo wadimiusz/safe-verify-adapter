@@ -133,6 +133,9 @@ class Verificator:
 
     def update_repo_thread_function(self):
         while True:
+            # __init__ has just run lake update; updating again right away would block
+            # checks for ~2 minutes after every start.
+            time.sleep(60 * 60)
             with self.update_lock:
                 start = time.time()
                 run_command(
@@ -147,8 +150,6 @@ class Verificator:
                     f"Successfully updated. This took {format_duration(time.time() - start)}. "
                     f"Back to sleep..."
                 )
-
-            time.sleep(60 * 60)
 
     def shutdown(self):
         shutil.rmtree(self.working_dir)
