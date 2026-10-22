@@ -4,6 +4,7 @@ import subprocess
 import threading
 import time
 import traceback
+from contextlib import asynccontextmanager
 
 import requests
 from fastapi import FastAPI, HTTPException
@@ -95,12 +96,18 @@ class Verificator:
         logger.info("Lake dependencies updated.")
 
         assert os.path.isdir(self.safe_verify_dir)
+        # daemon: if the app fails to start, the process must exit so docker sees the crash
         self.update_repo_thread = threading.Thread(
-            target=self.update_repo_thread_function
+            target=self.update_repo_thread_function, daemon=True
         )
         self.update_repo_thread.start()
-        self.app = FastAPI()
-        self.app.add_event_handler("shutdown", self.shutdown)
+
+        @asynccontextmanager
+        async def lifespan(app):
+            yield
+            self.shutdown()
+
+        self.app = FastAPI(lifespan=lifespan)
         self.setup_routes()
         self.close_bounty_url = "http://theorem-marketplace:5000/api/close_bounty"
 

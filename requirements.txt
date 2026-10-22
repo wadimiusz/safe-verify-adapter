@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-pydantic
-loguru
-uvicorn
-requests
+fastapi==0.159.1
+starlette==1.7.0
+uvicorn==0.54.0
+pydantic==2.14.1
+loguru==0.7.3
+requests==2.34.2
